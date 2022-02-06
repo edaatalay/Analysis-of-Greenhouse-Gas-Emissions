@@ -1,35 +1,416 @@
 ---
-title: "Project Title"
-author: "Team Name"
-date: "01/10/2021"
+title: "Analysis of Greenhouse Gas Emissions"
+author: "Melange Team"
+date: "30/01/2022"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 ---
 
-Project final report should be written in `R Markdown`. It can be in .`pdf` output or `.html` output. 
-There is no restriction on the output format since the final report may involve interactive plots etc. 
-The final report should be at most 30-pages long. 
-All team members should be involved in the preparation of the project final report. 
-Project final reports should present appropriate details on the following topics 
-(please note that other than Title, Team members, and Conclusion sections, order does not need to necessarily be in the order seen below):
+#### _Team members_:  
+* Beyza Nur Kebeli  
+* Eda Atalay
 
-*	Project title page (including project title and team members)
-*	Project Description
-  * Project goal & social problem addressed
-  * Project data & access to data
-*	Actions taken (data importing, cleaning, reshaping, exploring, visualizing etc) along with results
-*	Results and Discussion
-*	Conclusion
-* Please provide url address of your project deployed at `GitHub` pages under [GitHub Classroom of MAT381E organization](https://github.com/MAT381E) in Conclusion. 
-* The address should be similar to this: https://github.com/MAT381E-Fall21/final-project_teamname (you have make your repo public first).
-*	References
+### Project Description & Project Goal  
+Our project goal is to draw attention to greenhouse gas emissions because it is the biggest reason for this century's biggest problem which is global warming. Gases like carbon dioxide, methane and nitrous oxide makes up the vast majority of greenhouse gas emissions. Greenhouse gas emissions lead to global warming and climate change. Through these, greenhouse gases also cause air pollution, extreme weather conditions, wildfires and many more. The changes in climate and air quality substantially increase mortality for people with common chronic lung diseases such as asthma.
+
+### Project Data & Access to Data  
+Our project data set is provided by Organisation for Economic Co-operation and Development (OECD). The data set can be accessed through the [OECD iLibrary website](https://www.oecd-ilibrary.org/environment/data/oecd-environment-statistics/greenhouse-gas-emissions_data-00594-en).  <br>
+We decided to study another data set about the countries' development levels. For that, we used a data set from the [World Data Bank website](https://databank.worldbank.org/source/world-development-indicators). There were many indicators that showed the development of countries and we chose to work with the GDP per capita (current US$) as an indicator. GDP per capita is gross domestic product divided by midyear population which shows the size of a country's economy. It is an important indicator that shows the level of development. <br>
+We also used [NASA's Open Data Portal website](https://data.nasa.gov/dataset/World-Map/7zbq-j77a) to visualize a world map.
+#### Loading packages and importing data set
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(readr)
+library(readxl)
+library(rvest)
+library(htmlwidgets)
+library(dplyr)
+library(sf)
+library(leaflet)
+library(hrbrthemes)
+library(plotly)
+data <- read_csv("data/greenhousedata.csv", show_col_types = FALSE)
+```
+
+#### Tidying and cleaning 
+
+We dropped the columns that were all NAs.
+```{r}
+data <- data[, colSums(is.na(data)) != nrow(data)]
+```
+ 
+We choose to use 'Tonnes of $CO_2$ equivalent' as unit. Also, we decided to use the 'Greenhouse gases' from the 'Pollutant' column which means the total of pollutants and as a variable, we took 'Total emissions including LULUCF' to see the greater picture. LULUCF is abbreviated from Land Use, Land-Use Change and Forestry. The United Nations Climate Change Secretariat defined LULUCF as a "greenhouse gas inventory sector that covers removals of greenhouse gases resulting from direct human-induced land use such as settlements and commercial uses, land-use change, and forestry activities." In short, LULUCF is an attempt to reduce greenhouse gas emissions. We also dropped some rows because they were not countries, they were union of countries.  
+
+```{r}
+data <- data %>%
+  filter(Unit %in% c("Tonnes of CO2 equivalent")) %>%
+  filter(Pollutant == "Greenhouse gases" & VAR == "TOTAL_LULU") %>%
+  filter(!Country %in% c('OECD - Total','OECD - Europe','European Union (28 countries)','OECD America'))
+```
+
+### Part 1: Searching for relation with respect to continents
+
+We wanted to work on the data set with respect to continents so that it would help us to make comments and would make the visualization more understandable. We used 'countrycode' package.  
+
+```{r, warning=F, message=F}
+library(countrycode)
+country <- data %>%
+  select(Country)
+df_country <- data.frame(country) #converting into data frame
+```
+
+```{r, warning=F, message=F}
+df_country <- countrycode(sourcevar = df_country$Country,
+                            origin = "country.name",
+                            destination = "continent")
+```
+
+We created a data set which has the continent information. 
+
+```{r}
+data_continent <- data %>%
+  mutate(Continent = df_country)
+```
+
+#### Visualization of Part 1
+
+First, we analyzed the total greenhouse gas emissions by the continents. For that, we group by years and continents, then we take total of emission values.  
+
+```{r, warning=FALSE, message=FALSE}
+data_sum_by_years <- data_continent%>%
+  group_by(Year, Continent) %>%
+  summarise(Value = sum(Value)) %>%
+  mutate(Value= round(Value / 1e6, 1))
+```  
+
+```{r, fig.align='center'}
+data_sum_by_years %>%
+ggplot( aes(x=Year, y=Value, group=Continent, color=Continent)) +
+geom_line() +
+geom_point(shape=19, size=2) +
+labs(y = "Value (Tonnes of CO2 equivalent in Millions)", x = ("Years"),
+title = "Greenhouse Gas Emissions over the years",
+caption= "Figure 1",
+fill = "Continent") +
+scale_x_continuous(breaks=c(1990, 1995, 2000, 2005, 2010, 2015, 2019)) +
+scale_y_continuous(breaks=c(0:max(data_sum_by_years$Value))) +
+theme(plot.title = element_text(size = 16, hjust = 0.5),
+legend.title = element_text(face = "bold"),
+axis.title = element_text(face = "bold")) +
+theme_minimal() +
+scale_colour_manual(values = c("Americas" = "#EDD570",
+"Europe" = "#DE98CA",
+"Asia" = "#19BAE3",
+"Oceania" = "#FC8A2C"))
+```
+
+We observed that Asia shows unbalanced values over the years.
+We wonder what the reasons are for these peak points in 1994, 2005, 2012. So we checked our data set again and we realised that we have China's value for only three years 1994, 2005, 2012 which is the reason.  
+
+We want to show that which countries contributed to that over the years. We want to take percentage of the values for each country in Asia.
+
+```{r}
+percentage_asia <- data_continent %>%
+  filter(Continent == "Asia") %>%
+  group_by(Country) %>%
+  summarise(Value = sum(Value)) %>%
+  mutate(Percent = (Value/sum(Value))*100) %>%
+  mutate(Percent = round(Percent, 2))
+```
+
+```{r, fig.align='center',out.width = "80%"}
+percentage_asia %>%
+  mutate(Country = fct_reorder(Country, Value)) %>%
+  ggplot(aes(x = Percent, y = Country)) +
+  geom_bar(stat="identity", fill="#19BAE3") +
+  labs(title = "Percentage Value for Every Country in Asia",
+       x = "",
+       y = "",caption= "Figure 2") +
+  theme_minimal() +
+  geom_text(aes(label=Percent), hjust= 0.5, vjust=-0.30, cex=3.25, angle=270, fontface="italic")
+```
+Here, as seen, Turkey and Cyprus are stated as Asia.  
+
+We also wonder what is the situation in other continents as well. So we graph the percentage for each continent.
+
+```{r}
+percentage_americas <- data_continent %>%
+  filter(Continent == "Americas") %>%
+  group_by(Country) %>%
+  summarise(Value = sum(Value)) %>%
+  mutate(Percent = (Value/sum(Value))*100) %>%
+  mutate(Percent = round(Percent, 2))
+```
+
+```{r, fig.align='center',out.width="80%"}
+percentage_americas %>%
+  mutate(Country = fct_reorder(Country, Value)) %>%
+  ggplot(aes(x = Percent, y = Country)) +
+  geom_bar(stat="identity", fill="#EDD570") +
+  labs(title = "Percentage Value for Every Country in America",
+       x = "",
+       y = "",
+       caption= "Figure 3") +
+  theme_minimal() +
+  geom_text(aes(label=Percent), hjust= 0.5, vjust=-0.30, cex=3.5, angle= 270, fontface="italic")
+```
+```{r}
+percentage_europe <- data_continent %>%
+  filter(Continent == "Europe") %>%
+  group_by(Country) %>%
+  summarise(Value = sum(Value)) %>%
+  mutate(Percent = (Value/sum(Value))*100) %>%
+  mutate(Percent = round(Percent, 3))
+```
+
+```{r,fig.align='center'}
+percentage_europe %>%
+  mutate(Country = fct_reorder(Country, Value)) %>%
+  ggplot(aes(x = Percent, y = Country)) +
+  geom_bar(stat="identity", fill="#DE98CA") +
+  labs(title = "Percentage Value for Every Country in Europe",
+       x = "",
+       y = "",
+       caption= "Figure 4") +
+  theme_minimal() +
+  geom_text(aes(label=Percent),hjust=-0.05,vjust=0.50,cex=2.7, fontface="italic")
+```
+
+```{r}
+percentage_oceania <- data_continent %>%
+  filter(Continent == "Oceania") %>%
+  group_by(Country) %>%
+  summarise(Value = sum(Value)) %>%
+  mutate(Percent = (Value/sum(Value))*100) %>%
+  mutate(Percent = round(Percent, 1))
+```
+
+```{r, fig.align='center',out.width="80%"}
+percentage_oceania %>%
+  mutate(Country = fct_reorder(Country, Value)) %>%
+  ggplot(aes(x = Percent, y = Country)) +
+  geom_bar(stat="identity", fill="#FC8A2C") +
+  labs(title = "Percentage Value for Every Country in Oceania",
+       x = "",
+       y = "",
+       caption= "Figure 5") +
+  theme_minimal() +
+  geom_text(aes(label=Percent), hjust= 0.5, vjust=-0.30, angle=270, cex=3.5, fontface="italic")
+```
+
+For the most recent year in our data set, 2019, we checked which continent caused the most amount of greenhouse gas emissions using pie chart. 
+
+```{r}
+pie_data <- data_continent %>%
+  filter(Year == 2019) %>%
+  group_by(Continent) %>%
+  summarize(Value = sum(Value))
+```
+
+```{r}
+pie_data %>%
+  plot_ly(labels = ~Continent, values = ~Value, type = 'pie',
+          marker = list(colors = c("Americas" = "#EDD570",
+                            "Europe" = "#DE98CA",
+                            "Asia" = "#19BAE3",
+                            "Oceania" = "#FC8A2C"),
+                        line = list(color = '#FFFFFF', width = 1)))
+```
 
 
-Project final report should be prepared collaboratively. 
+#### Results of Part 1
 
-**Cautionary notes**: 
-1) Project final reports will not be accepted after deadline. 
-2) You should download `R Project` on `GitHub` to your local computer, do the changes as needed, delete all the files you have not used to produce your report, and finally commit and push all the required files (including `.Rmd` files) just before
-your oral presentation (January 29, 2022 or January 30, 2022) via [GitHub Classroom of MAT381E organization](https://github.com/MAT381E).
+* Oceania continent has only 2 countries so it is expected their greenhouse gas emission values are low, and we can see that from Figure 1.  
+* Asia continent has 3 big peaks due to China's greenhouse gas emissions. We expected this, China is the most crowded country and produces a lot.    
+* We cannot make healthy comments about Asia because it has peak points that create unbalanced results.  
+* Europe continent has managed decreasing the emissions over the years overall as seen in Figure 1.  
+* All continents except Oceania had very similar values for the year 1994.  
+* After 1995, America continent starts to produce more greenhouse gases while Europe continent starts to produce less.  
+* As seen on the pie chart, for 2019, Americas continent has the highest value for greenhouse gas emissions followed by Europe. Asia is the third highest continent and Ocenia has the lowest value amongst others.
 
+### Part 2: Relation between development level and greenhouse gas emission of countries
+
+We decided to analyze another factor that can be related to greenhouse gas emissions. As stated in the beginning, we looked at GDP per capita (current US$).
+
+```{r}
+gdpdata <- read_csv("data/gdpdata.csv", show_col_types = FALSE)
+```
+
+Firstly, in the GDP data set, years were given as columns. We converted them into rows using the gather() function. We dropped NAs. Then, we changed the Country Code column name to COU because we will use left_join() function later.
+
+```{r}
+gdpdata<-gdpdata %>%
+  gather(Year, GDP, '1990':'2019') %>%
+  filter( is.na(GDP) == FALSE) %>%
+  rename(COU= 'Country Code')
+  gdpdata$Year <- as.numeric(gdpdata$Year)
+```
+
+We wanted to see the relation in the most recent year in our data set, which is 2019. So, we filtered our two data sets according to year 2019. 
+
+```{r}
+data <- data %>%
+  filter(Year == 2019)
+gdpdata <- gdpdata %>%
+  filter(Year == 2019)
+```
+
+We merged the two data sets by the common COU column using left_join() function. After merging, GDP column is added to the data set but it was not numeric. So, we converted it to numeric.  
+
+```{r}
+data <- left_join(data, gdpdata, by = "COU")
+data$GDP <- as.numeric(data$GDP)
+```
+
+To simplify the visualization, we rounded the number to scale the graph more efficiently.
+
+```{r, warning=FALSE, message=FALSE}
+value_and_gdp <- data %>%
+  select(Country, GDP, Value, YEA) %>%
+  mutate(GDP = round(GDP / 1e3, 1)) %>%
+  mutate(Value = round(Value / 1e3, 1)) #rounding the number values for simplicity
+```
+
+To see if there is a relation between GDP per capita and greenhouse gas emissions, we decided to visualize them together in one graph.
+
+```{r,warning=FALSE, out.width = "200%"}
+GDPColor <- "#2e82b0"
+ValueColor <- "#e538aa"
+  ggplot(value_and_gdp, aes(x = reorder(Country, GDP), group=YEA)) +
+  geom_bar( aes(y=GDP), stat="identity", size=.1, fill=GDPColor, color="white", alpha=0.8) +
+  geom_line( aes(y=Value/30),size=1, color=ValueColor) +
+ 
+  scale_y_continuous(
+    name="GDP per capita
+    (current US$ in Thousands)",
+    sec.axis = sec_axis(~.*30, name="Greenhouse gas emmisions
+                        (Tonnes of CO2 equivalent in Thousands)")
+  )  +
+  theme_ipsum()+
+  labs(x="", caption= "Figure 6") +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30),
+    axis.title.y = element_text(color = GDPColor, size=9),
+    axis.title.y.right = element_text(color = ValueColor, size=9)
+  ) +
+  ggtitle("Relation between GDP per capita and Greenhouse Gas Emissions Value")
+```
+United States had a significantly bigger value than any other country, so value for other countries could not be seen properly. We created the same graph without United States' value as well.
+
+```{r,warning=FALSE, out.width = "200%"}
+e1 <- value_and_gdp %>%
+  filter(Country != "United States")
+GDPColor <- "#2e82b0"
+ValueColor <- "#e538aa"
+  ggplot(e1, aes(x = reorder(Country, GDP), group=YEA)) +
+  geom_bar(aes(y=GDP), stat="identity", size=.1, fill=GDPColor, color="white", alpha=0.8) +
+  geom_line( aes(y=Value/10),size=1, color=ValueColor) +
+ 
+  scale_y_continuous(
+    name="GDP per capita
+    (current US$ in Thousands)",
+    sec.axis = sec_axis(~.*10, name="Greenhouse gas emmisions
+                        (Tonnes of CO2 equivalent in Thousands)")
+  )  +
+  theme_ipsum()+
+  labs(x="", caption= "Figure 7") +
+  theme(
+    plot.title = element_text(size = 12, hjust = 0.5),
+    axis.text.x = element_text(angle=90, hjust=1,vjust=0.30),
+    axis.title.y = element_text(color = GDPColor, size=9),
+    axis.title.y.right = element_text(color = ValueColor, size=9)
+  ) +
+  ggtitle("Relation between GDP per capita and Greenhouse Gas Emissions Value")
+```
+
+#### Results of Part 2
+
+* At the year 2019, there is no direct relation between GDP per capita and greenhouse gas emissions for the countries.
+* As seen in Figure 6, for United States, even though it's GDP per capita is high, it had the biggest value for greenhouse gas emissions. It can be because it is a country with a vast area, and produces a lot.
+* At the beginning, we thought that while GDP per capita increases, the value of greenhouse gas emissions would decrease. Excluding United States, for the countries with the highest GDP, we can see that it is true as seen in Figure 7. Their values are certainly lower. However, there is no pattern for the low GDP countries.
+* Overall, it can be said that only analyzing the GDP per capita is not the efficient way to make comments because there are other factors as well such as productivity and area of the country.  
+For example, countries like Russia, Canada and Australia, regardless of their GDP, have higher values for greenhouse gases. Also, Japan and Germany could have higher values because they are countries with high rates of production which means that they have more factories that increase this value.  
+
+### Part 3: Visualization on the World Map
+
+```{r, warning=FALSE, message=FALSE}
+worldmap <- st_read("data/shapefiles/OGRGeoJSON.shp")
+```
+For merging the World Map with our data set, we changed the column name from name to Country.
+
+```{r}
+worldmap <- worldmap %>%
+  rename(Country = "name")
+
+```
+
+In the two data sets, names for two countries were different. To merge them, they needed to be the same.
+
+```{r}
+data$Country[4]<- "Slovakia"
+data$Country[33]<- "United States of America"
+```
+
+We merged the data set to the World Map data set.
+
+```{r}
+data2 <- left_join(worldmap, data, by= "Country")
+data2 <- data2 %>%
+  mutate(Value = round(Value / 1e3, 1))
+
+data2_as_sf <- st_as_sf(data2, sf_column_name = "geometry")
+
+
+```
+
+We created a new column called distribution to make visualization more meaningful.
+
+```{r}
+data2_as_sf <- data2_as_sf %>%
+                   mutate(distribution = case_when(
+                                            Value <=50 ~ "1",
+                                            Value <190 ~ "2",
+                                            Value <500 ~ "3",
+                                            Value <1500 ~ "4",
+                                            Value >=1500 ~ "5",
+                                            TRUE ~ "6"))
+
+                     
+                                      
+                                          
+```
+
+We obtained the interactive world map with colors that represent the value of greenhouse gas emissions.
+
+```{r}
+labels <-  sprintf("<strong>%s</strong><br/> Total Greenhouse Gas Emissions: %s", data2_as_sf$Country, data2_as_sf$Value) %>%
+            lapply(htmltools::HTML)
+pal_col <- colorFactor(c("#F1C40F","#D4AC0D", "#B7950B", "#9A7D0A", "#7D6608", "#FCF3CF"), domain = data2_as_sf$distribution)
+colormap <- data2_as_sf %>%
+  leaflet() %>% 
+  addPolygons(fillColor = ~pal_col(data2_as_sf$distribution),
+              label = labels,
+              fillOpacity = 0.8, 
+              color = "white",
+              weight = 1)
+
+colormap
+```
+
+### Conclusion and Discussion  
+
+In our study, we tried to emphasize which countries produced more greenhouse gas emissions. We divided the countries by their continents and made comments about the reasons behind their values for each group. Also, we looked for a relation between economic development level and this problem. We expected to see an inverse relation between the two. Only in the countries with the highest GDP per capita values, it can be seen that their values are particularly low. Some countries with higher GDP per capita values, like United States of America and Japan, still showed a really high value for greenhouse gas emissions which we think that they need to take action to be more sustainable. Even though economic development level is an important factor behind greenhouse gas emissions, we discovered that there are many other factors as well. Countries need to understand how important these emissions are and act according to it.
+
+#### References
+[wikipedia.org](https://en.wikipedia.org/wiki/Land_use,_land-use_change,_and_forestry)  
+[oecd-ilibrary.org](https://www.oecd-ilibrary.org/environment/data/oecd-environment-statistics_env-data-en)  
+[data-to-viz.com](https://www.data-to-viz.com/)  
+[r-graph-gallery.com](https://www.r-graph-gallery.com/)   
+[htmlcolorcodes.com](https://htmlcolorcodes.com/)   
+[stackoverflow.com](https://stackoverflow.com/questions/47510141/get-continent-name-from-country-name-in-r)    
+[databank.worldbank.org](https://databank.worldbank.org/source/world-development-indicators)  
+[data.nasa.gov](https://data.nasa.gov/dataset/World-Map/7zbq-j77a)  
+[github.io](https://uc-r.github.io/tidyr#gather)
